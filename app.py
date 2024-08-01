@@ -5,14 +5,31 @@ from unittest.mock import patch
 import gradio as gr
 import ast
 from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers.dynamic_module_utils import get_imports
 
-model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
-processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
+def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
+    """Work around for https://huggingface.co/microsoft/phi-1_5/discussions/72."""
+    if not str(filename).endswith("/modeling_florence2.py"):
+        return get_imports(filename)
+    imports = get_imports(filename)
+    imports.remove("flash_attn")
+    return imports
 
-def draw_boxes(image, quad_boxes):
+with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
+    model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
+
+def draw_boxes(image, boxes, box_type='bbox', labels=None):
     draw = ImageDraw.Draw(image)
-    for box in quad_boxes:
-        draw.polygon(box, outline="red", width=2)
+    for i, box in enumerate(boxes):
+        if box_type == 'quad':
+            draw.polygon(box, outline="red", width=2)
+        elif box_type == 'bbox':
+            draw.rectangle(box, outline="red", width=2)
+        
+        if labels and i < len(labels):
+            draw.text((box[0], box[1] - 10), labels[i], fill="red")
+    
     return image
 
 def run_example(image, task, additional_text=""):
@@ -37,13 +54,16 @@ def run_example(image, task, additional_text=""):
     result_text = str(parsed_answer)
     result_image = image.copy()
     
-    if task == "OCR_WITH_REGION":
-        try:
-            result_dict = ast.literal_eval(result_text)
-            quad_boxes = result_dict['<OCR_WITH_REGION>']['quad_boxes']
-            result_image = draw_boxes(result_image, quad_boxes)
-        except:
-            print("Failed to draw bounding boxes.")
+    try:
+        result_dict = ast.literal_eval(result_text)
+        task_key = f"<{task}>"
+        if task_key in result_dict:
+            if 'quad_boxes' in result_dict[task_key]:
+                result_image = draw_boxes(result_image, result_dict[task_key]['quad_boxes'], 'quad')
+            elif 'bboxes' in result_dict[task_key]:
+                result_image = draw_boxes(result_image, result_dict[task_key]['bboxes'], 'bbox', result_dict[task_key].get('labels'))
+    except:
+        print(f"Failed to draw bounding boxes for task: {task}")
     
     return result_text, result_image
 
