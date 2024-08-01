@@ -1,5 +1,5 @@
 gradio==4.40.0
 Pillow==9.1.0
 Requests==2.32.3
-transformers==4.24.0
+transformers==4.43.3
 torch
