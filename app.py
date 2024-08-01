@@ -37,10 +37,11 @@ def run_example(image, task, additional_text=""):
         return "Please upload an image.", None
 
     prompt = f"<{task}>"
-    if task == "CAPTION_TO_PHRASE_GROUNDING" and additional_text:
-        inputs = processor(text=prompt, images=image, return_tensors="pt", text_input=additional_text)
-    else:
-        inputs = processor(text=prompt, images=image, return_tensors="pt")
+    if task == "CAPTION_TO_PHRASE_GROUNDING":
+        # For Caption to Phrase Grounding, we include the additional text in the prompt
+        prompt += f" {additional_text}"
+    
+    inputs = processor(text=prompt, images=image, return_tensors="pt")
     
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
