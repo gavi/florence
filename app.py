@@ -5,9 +5,19 @@ from unittest.mock import patch
 import gradio as gr
 import ast
 from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers.dynamic_module_utils import get_imports
 
-model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
-processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
+def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
+    """Work around for https://huggingface.co/microsoft/phi-1_5/discussions/72."""
+    if not str(filename).endswith("/modeling_florence2.py"):
+        return get_imports(filename)
+    imports = get_imports(filename)
+    imports.remove("flash_attn")
+    return imports
+
+with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
+    model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large-ft", trust_remote_code=True)
 
 def draw_boxes(image, quad_boxes):
     draw = ImageDraw.Draw(image)
